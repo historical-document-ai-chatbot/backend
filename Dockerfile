@@ -1,43 +1,27 @@
-FROM python:3.10
+# Use official Python image
+FROM python:3.10-slim
 
+# Environment variables
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app/
+# Set working directory
+WORKDIR /app
 
-# Install uv
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
-
-# Place executables in the environment at the front of the path
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#using-the-environment
-ENV PATH="/app/.venv/bin:$PATH"
-
-# Compile bytecode
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#compiling-bytecode
-ENV UV_COMPILE_BYTECODE=1
-
-# uv Cache
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#caching
-ENV UV_LINK_MODE=copy
+# Copy only requirements first for caching
+COPY requirements.txt /app/requirements.txt
 
 # Install dependencies
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-ENV PYTHONPATH=/app
-
-COPY ./scripts /app/scripts
-
-COPY ./pyproject.toml ./uv.lock ./alembic.ini /app/
-
+# Copy all app code
 COPY ./app /app/app
+COPY ./scripts /app/scripts
+COPY ./alembic.ini /app/alembic.ini
+COPY ./alembic /app/alembic
 
-# Sync the project
-# Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync
+# Expose port FastAPI will run on
+EXPOSE 8000
 
-CMD ["fastapi", "run", "--workers", "4", "app/main.py"]
+# Default command to run FastAPI using uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
