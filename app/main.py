@@ -1,45 +1,62 @@
 import os
 from dotenv import load_dotenv
+
+# 1. Load env vars FIRST
 load_dotenv()
+
 import firebase_admin
-from app.api.routes import health_router, docs_router
 from firebase_admin import credentials, firestore
 from fastapi import FastAPI, HTTPException
 
-# Initialize Firebase Admin SDK
+# 2. Add these imports for Pydantic
+from pydantic import BaseModel
+from typing import List, Optional
+
+from app.api.routes import health_router, docs_router
+from app.services.chat_service import generate_response
+
+# Initialize Firebase
 try:
     firebase_admin.initialize_app()
     print("Firebase App initialized!")
 except ValueError:
     print("Firebase App already initialized.")
 
-# Create FastAPI app instance
 app = FastAPI(title="Historical Docs Chatbot Backend")
-
-# Get a client for the Firestore database
 db = firestore.client()
 
-
-# Include routes without prefix
 app.include_router(health_router, prefix="", tags=["health"])
 app.include_router(docs_router, prefix="", tags=["docs"])
 
-# Root endpoint
+
+# --- DATA MODELS ---
+# Later we can move them to app/schemas.py
+class ChatMessage(BaseModel):
+    sender: str
+    content: str
+    id: Optional[str] = None
+    timestamp: Optional[str] = None
+    type: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    newspaper_id: str
+    message: str
+    history: List[ChatMessage] = []
+
+
+# --- ROUTES ---
+
+
 @app.get("/")
 def root():
-    return {"message": "Backend is running. Connect your frontend to /health and other endpoints."}
+    return {"message": "Backend is running."}
+
 
 @app.get("/api/newspapers")
 def get_newspaper_list():
-    """
-    Fetches a list of all newspaper documents.
-    This version just returns the IDs and key metadata.
-    """
     try:
-        # Get all documents from the 'newspapers' collection
         docs_stream = db.collection("newspapers").stream()
-
-        # We will collect just the IDs and key metadata
         newspaper_list = []
         for doc in docs_stream:
             data = doc.to_dict()
@@ -50,32 +67,44 @@ def get_newspaper_list():
                     "date": data.get("date", "Unknown Date"),
                 }
             )
-
         return newspaper_list
     except Exception as e:
-        # Return an error if something goes wrong
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-# Get a specific newspaper's full JSON
 @app.get("/api/newspaper/{doc_id}")
 def get_newspaper_document(doc_id: str):
-    """
-    Fetches the full JSON data for a single document
-    based on its ID (e.g., 'star_of_chile_1904-08-06').
-    """
     try:
-        # Get a specific document from the 'newspapers' collection
         doc_ref = db.collection("newspapers").document(doc_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return doc.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/chat")
+def chat_endpoint(request: ChatRequest):
+    try:
+        # 1. Fetch Root Document
+        doc_ref = db.collection("newspapers").document(request.newspaper_id)
         doc = doc_ref.get()
 
         if not doc.exists:
-            # If the ID doesn't exist, return a 404 error
-            raise HTTPException(status_code=404, detail="Document not found")
-        else:
-            # Return the entire document's data as JSON
-            return doc.to_dict()
+            raise HTTPException(status_code=404, detail="Newspaper not found")
+
+        newspaper_data = doc.to_dict()
+
+        # 2. Call Gemini Service
+        response_text = generate_response(
+            newspaper_data=newspaper_data,
+            chat_history=[msg.dict() for msg in request.history],
+            user_message=request.message,
+        )
+
+        return {"response": response_text}
+
     except Exception as e:
-        # Catch other potential errors
+        print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
