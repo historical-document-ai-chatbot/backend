@@ -1,3 +1,6 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 import firebase_admin
 from app.api.routes import health_router, docs_router
 from firebase_admin import credentials, firestore
