@@ -14,13 +14,29 @@ from typing import List, Optional
 
 from app.api.routes import health_router, docs_router
 from app.services.chat_service import generate_response
+from fastapi.middleware.cors import CORSMiddleware
 
-# Initialize Firebase
-try:
-    firebase_admin.initialize_app()
-    print("Firebase App initialized!")
-except ValueError:
-    print("Firebase App already initialized.")
+# --- DUAL-MODE AUTHENTICATION ---
+# 1. Define the path to the local key
+cred_path = "app/serviceAccountKey.json"
+
+# 2. Check if we are local or in cloud
+if os.path.exists(cred_path):
+    # LOCAL MODE: Use the JSON file
+    cred = credentials.Certificate(cred_path)
+    try:
+        firebase_admin.initialize_app(cred)
+        print("Initialized Firebase with Local Certificate.")
+    except ValueError:
+        pass  # Already initialized
+else:
+    # CLOUD MODE: Use Default Application Credentials (ADC)
+    # Cloud Run automatically injects credentials for the service account
+    try:
+        firebase_admin.initialize_app()
+        print("Initialized Firebase with Cloud Identity.")
+    except ValueError:
+        pass  # Already initialized
 
 app = FastAPI(title="Historical Docs Chatbot Backend")
 db = firestore.client()
