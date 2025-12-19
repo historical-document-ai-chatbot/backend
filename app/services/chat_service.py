@@ -48,6 +48,7 @@ def generate_response(newspaper_data: dict, chat_history: list, user_message: st
     
     GUIDELINES:
     - Be concise but informative.
+    - NEVER be brief unless explicitly asked to be.
     - If the user asks for a count (words, articles), estimate it based on the text provided.
     - If the answer is not in the newspaper, strictly state that the information is missing.
     """
@@ -65,7 +66,8 @@ def generate_response(newspaper_data: dict, chat_history: list, user_message: st
         model=MODEL_NAME,
         config=types.GenerateContentConfig(
             system_instruction=sys_instruct,
-            temperature=0.5,
+            temperature=0.7,  # Slightly higher creativity
+            max_output_tokens=8192,  # <--- FORCE LONG ANSWERS
         ),
         history=formatted_history,
     )
