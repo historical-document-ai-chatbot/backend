@@ -44,6 +44,15 @@ db = firestore.client()
 app.include_router(health_router, prefix="", tags=["health"])
 app.include_router(docs_router, prefix="", tags=["docs"])
 
+# --- CORS: ALLOW EVERYTHING ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # <--- "*" allows localhost, firebase, etc.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # --- DATA MODELS ---
 # Later we can move them to app/schemas.py
